@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sudoku</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sudoku">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root {
+  --bg: #ffffff;
+  --ink: #111111;
+  --muted: #9a9a9a;
+  --line: #e2e2e2;
+  --thick: #1c1c1c;
+  --accent: #2f5bd3;
+  --peer: #f4f5f7;
+  --same: #dfe6f8;
+  --sel: #c9d6f7;
+  --veil: rgba(255,255,255,.86);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --ink: #f2f2f2;
+    --muted: #6f6f74;
+    --line: #2a2a2d;
+    --thick: #8e8e93;
+    --accent: #86a6ff;
+    --peer: #111114;
+    --same: #1b2440;
+    --sel: #263461;
+    --veil: rgba(0,0,0,.86);
+  }
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", sans-serif;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+button {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0;
+  cursor: pointer; touch-action: manipulation;
+}
+main {
+  min-height: 100vh; min-height: 100dvh;
+  max-width: 520px; margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 16px);
+  display: flex; flex-direction: column; justify-content: center; gap: 22px;
+}
+
+/* header */
+header { display: flex; align-items: center; justify-content: space-between; height: 32px; }
+#level { font-size: 15px; color: var(--muted); letter-spacing: .02em; }
+.right { display: flex; align-items: center; gap: 22px; font-size: 15px; }
+#script { display: flex; gap: 8px; font-size: 17px; }
+#script span { color: var(--muted); transition: color .15s; }
+#script span.on { color: var(--ink); }
+#new { color: var(--ink); }
+
+/* board */
+.board {
+  width: min(100%, calc(100dvh - 300px)); align-self: center;
+  aspect-ratio: 1;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 2px;
+  background: var(--thick); border: 2px solid var(--thick);
+  container-type: inline-size;
+}
+.box { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 1px; min-height: 0; background: var(--line); }
+.cell {
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 6.4cqi; line-height: 1; color: var(--accent);
+  position: relative; min-width: 0; min-height: 0; overflow: hidden;
+}
+.cell.given { color: var(--ink); }
+.cell.peer { background: var(--peer); }
+.cell.same { background: var(--same); }
+.cell.sel { background: var(--sel); }
+.cn .cell { font-size: 5.6cqi; }
+.notes {
+  position: absolute; inset: 6%;
+  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  font-size: 2.5cqi; color: var(--muted);
+}
+.cn .notes { font-size: 2.2cqi; }
+.notes span { display: flex; align-items: center; justify-content: center; }
+
+/* tools */
+.tools { display: flex; justify-content: space-around; }
+.tool {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--muted); min-width: 64px; padding: 4px 0;
+}
+.tool svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.tool.on { color: var(--accent); }
+
+/* pad */
+.pad { display: grid; grid-template-columns: repeat(9, 1fr); }
+.pad button { height: 58px; font-size: 30px; font-weight: 300; color: var(--accent); transition: opacity .2s; }
+.cn .pad button { font-size: 26px; }
+.pad button.done { opacity: .18; }
+.pad.noting button { color: var(--muted); }
+
+/* sheet */
+.sheet {
+  position: fixed; inset: 0; z-index: 10;
+  background: var(--veil);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.sheet.open { opacity: 1; pointer-events: auto; }
+.sheet h2 { font-weight: 300; font-size: 34px; margin: 0 0 18px; }
+.sheet button { font-size: 20px; padding: 12px 40px; }
+.sheet .cancel { color: var(--muted); font-size: 16px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<main id="app">
+  <header>
+    <div id="level"></div>
+    <div class="right">
+      <button id="script" aria-label="Switch numerals"><span>1</span><span>一</span></button>
+      <button id="new">New</button>
+    </div>
+  </header>
+
+  <div class="board" id="board"></div>
+
+  <div class="tools">
+    <button class="tool" id="undo">
+      <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo
+    </button>
+    <button class="tool" id="erase">
+      <svg viewBox="0 0 24 24"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l9.6-9.6a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>Erase
+    </button>
+    <button class="tool" id="notes">
+      <svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg><span id="notesLabel">Notes</span>
+    </button>
+  </div>
+
+  <div class="pad" id="pad"></div>
+</main>
+
+<div class="sheet" id="sheet">
+  <h2 id="sheetTitle">New game</h2>
+  <button data-level="easy">Easy</button>
+  <button data-level="medium">Medium</button>
+  <button data-level="hard">Hard</button>
+  <button class="cancel" id="cancel">Cancel</button>
+</div>
+
+<script>
+const CN = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const LEVELS = { easy: 40, medium: 32, hard: 26 };   // target number of clues
+const NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+const KEY = 'sudoku-state-v1';
+const $ = id => document.getElementById(id);
+
+const rowOf = i => (i / 9) | 0;
+const colOf = i => i % 9;
+const boxOf = i => ((i / 27) | 0) * 3 + ((i % 9) / 3 | 0);
+const PEERS = [...Array(81)].map((_, i) =>
+  [...Array(81).keys()].filter(j => j !== i &&
+    (rowOf(j) === rowOf(i) || colOf(j) === colOf(i) || boxOf(j) === boxOf(i))));
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.random() * (i + 1) | 0;
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Counts solutions of g (up to limit). If it stops at a solution, g is left filled in.
+function solve(g, limit, random) {
+  const row = new Array(9).fill(0), col = new Array(9).fill(0), box = new Array(9).fill(0);
+  for (let i = 0; i < 81; i++) if (g[i]) {
+    const b = 1 << g[i];
+    row[rowOf(i)] |= b; col[colOf(i)] |= b; box[boxOf(i)] |= b;
+  }
+  let count = 0;
+  (function rec() {
+    let best = -1, bestMask = 0, bestN = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      const m = ~(row[rowOf(i)] | col[colOf(i)] | box[boxOf(i)]) & 0x3fe;
+      let n = 0;
+      for (let x = m; x; x &= x - 1) n++;
+      if (n < bestN) { best = i; bestMask = m; bestN = n; if (!n) return false; }
+    }
+    if (best < 0) return ++count >= limit;
+    const ds = [];
+    for (let d = 1; d <= 9; d++) if (bestMask & (1 << d)) ds.push(d);
+    if (random) shuffle(ds);
+    const r = rowOf(best), c = colOf(best), bx = boxOf(best);
+    for (const d of ds) {
+      const b = 1 << d;
+      g[best] = d; row[r] |= b; col[c] |= b; box[bx] |= b;
+      if (rec()) return true;
+      g[best] = 0; row[r] &= ~b; col[c] &= ~b; box[bx] &= ~b;
+    }
+    return false;
+  })();
+  return count;
+}
+
+// Removal can get stuck above the target, so try a few times and keep the sparsest.
+function generate(level) {
+  let best = null;
+  for (let t = 0; t < 40; t++) {
+    const g = attempt(level), n = g.puz.filter(Boolean).length;
+    if (!best || n < best.n) best = { ...g, n };
+    if (n <= LEVELS[level]) break;
+  }
+  return best;
+}
+
+function attempt(level) {
+  const sol = new Array(81).fill(0);
+  solve(sol, 1, true);
+  const puz = sol.slice();
+  let clues = 81;
+  for (const i of shuffle([...Array(41).keys()])) {   // remove cells in symmetric pairs
+    if (clues <= LEVELS[level]) break;
+    const j = 80 - i, a = puz[i], b = puz[j];
+    puz[i] = puz[j] = 0;
+    if (solve(puz.slice(), 2, false) === 1) clues -= i === j ? 1 : 2;
+    else { puz[i] = a; puz[j] = b; }
+  }
+  return { puz, sol };
+}
+
+let S;
+
+function newGame(level) {
+  const { puz, sol } = generate(level);
+  S = {
+    level, cn: S ? S.cn : false,
+    given: puz, sol, val: puz.slice(), notes: new Array(81).fill(0),
+    hist: [], sel: -1, noting: false, solved: false,
+  };
+  save(); render();
+}
+
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+
+const glyph = d => S.cn ? CN[d] : String(d);
+
+// Every edit is a list of {i, v, n} snapshots so undo can restore them.
+function commit(cells) {
+  S.hist.push(cells.map(i => ({ i, v: S.val[i], n: S.notes[i] })));
+  if (S.hist.length > 500) S.hist.shift();
+}
+
+function input(d) {
+  const i = S.sel;
+  if (i < 0 || S.given[i] || S.solved) return;
+  if (S.noting) {
+    if (S.val[i]) return;
+    commit([i]);
+    S.notes[i] ^= 1 << d;
+  } else if (S.val[i] === d) {
+    commit([i]);
+    S.val[i] = 0;
+  } else {
+    const touched = PEERS[i].filter(j => S.notes[j] & (1 << d));
+    commit([i, ...touched]);
+    S.val[i] = d; S.notes[i] = 0;
+    for (const j of touched) S.notes[j] &= ~(1 << d);
+  }
+  if (S.val.every((v, k) => v === S.sol[k])) S.solved = true;
+  save(); render();
+  if (S.solved) setTimeout(() => openSheet('Solved'), 450);
+}
+
+function erase() {
+  const i = S.sel;
+  if (i < 0 || S.given[i] || S.solved || (!S.val[i] && !S.notes[i])) return;
+  commit([i]);
+  S.val[i] = 0; S.notes[i] = 0;
+  save(); render();
+}
+
+function undo() {
+  if (S.solved) return;
+  const step = S.hist.pop();
+  if (!step) return;
+  for (const { i, v, n } of step) { S.val[i] = v; S.notes[i] = n; }
+  S.sel = step[0].i;
+  save(); render();
+}
+
+// ---- view ----
+const cells = [];
+(function build() {
+  const board = $('board');
+  for (let b = 0; b < 9; b++) {
+    const box = document.createElement('div');
+    box.className = 'box';
+    for (let k = 0; k < 9; k++) {
+      const i = (((b / 3) | 0) * 3 + ((k / 3) | 0)) * 9 + (b % 3) * 3 + (k % 3);
+      const el = document.createElement('div');
+      el.className = 'cell';
+      el.addEventListener('pointerdown', () => { S.sel = S.sel === i ? -1 : i; save(); render(); });
+      box.appendChild(el);
+      cells[i] = el;
+    }
+    board.appendChild(box);
+  }
+  const pad = $('pad');
+  for (let d = 1; d <= 9; d++) {
+    const btn = document.createElement('button');
+    btn.addEventListener('click', () => input(d));
+    pad.appendChild(btn);
+  }
+})();
+
+function render() {
+  document.body.classList.toggle('cn', S.cn);
+  $('level').textContent = NAMES[S.level];
+  const [a, b] = $('script').children;
+  a.classList.toggle('on', !S.cn); b.classList.toggle('on', S.cn);
+  $('notes').classList.toggle('on', S.noting);
+  $('notesLabel').textContent = S.noting ? 'Notes on' : 'Notes';
+  $('pad').classList.toggle('noting', S.noting);
+
+  const sel = S.sel, sv = sel >= 0 ? S.val[sel] : 0;
+  for (let i = 0; i < 81; i++) {
+    const el = cells[i], v = S.val[i];
+    let cls = 'cell';
+    if (S.given[i]) cls += ' given';
+    if (sel >= 0) {
+      if (i === sel) cls += ' sel';
+      else if (sv && v === sv) cls += ' same';
+      else if (rowOf(i) === rowOf(sel) || colOf(i) === colOf(sel) || boxOf(i) === boxOf(sel)) cls += ' peer';
+    }
+    el.className = cls;
+    if (v) el.textContent = glyph(v);
+    else if (S.notes[i]) {
+      let h = '<div class="notes">';
+      for (let d = 1; d <= 9; d++) h += `<span>${S.notes[i] & (1 << d) ? glyph(d) : ''}</span>`;
+      el.innerHTML = h + '</div>';
+    } else el.textContent = '';
+  }
+
+  const counts = new Array(10).fill(0);
+  for (const v of S.val) counts[v]++;
+  [...$('pad').children].forEach((btn, k) => {
+    btn.textContent = glyph(k + 1);
+    btn.classList.toggle('done', counts[k + 1] >= 9);
+  });
+}
+
+function openSheet(title) {
+  $('sheetTitle').textContent = title;
+  $('cancel').style.display = S.solved ? 'none' : '';
+  $('sheet').classList.add('open');
+}
+const closeSheet = () => $('sheet').classList.remove('open');
+
+$('new').addEventListener('click', () => openSheet(S.solved ? 'Solved' : 'New game'));
+$('cancel').addEventListener('click', closeSheet);
+$('sheet').querySelectorAll('[data-level]').forEach(btn =>
+  btn.addEventListener('click', () => { closeSheet(); newGame(btn.dataset.level); }));
+$('script').addEventListener('click', () => { S.cn = !S.cn; save(); render(); });
+$('notes').addEventListener('click', () => { S.noting = !S.noting; save(); render(); });
+$('erase').addEventListener('click', erase);
+$('undo').addEventListener('click', undo);
+
+// keyboard, for playing on a computer
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey) return;
+  const k = e.key;
+  if (k >= '1' && k <= '9') input(+k);
+  else if (k === 'Backspace' || k === 'Delete' || k === '0') erase();
+  else if (k === 'z' || k === 'u') undo();
+  else if (k === 'n') { S.noting = !S.noting; save(); render(); }
+  else if (k.startsWith('Arrow')) {
+    const i = S.sel < 0 ? 40 : S.sel;
+    let r = rowOf(i), c = colOf(i);
+    if (k === 'ArrowUp') r = (r + 8) % 9;
+    if (k === 'ArrowDown') r = (r + 1) % 9;
+    if (k === 'ArrowLeft') c = (c + 8) % 9;
+    if (k === 'ArrowRight') c = (c + 1) % 9;
+    S.sel = r * 9 + c; save(); render();
+    e.preventDefault();
+  }
+});
+
+S = load();
+if (S && S.sol && S.val) { render(); if (S.solved) openSheet('Solved'); }
+else { S = null; newGame('easy'); }
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
