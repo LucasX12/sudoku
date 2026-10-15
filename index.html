@@ -26,6 +26,7 @@
   --same: #dfe6f8;
   --sel: #c9d6f7;
   --veil: rgba(255,255,255,.86);
+  --bad: #d93a3a;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -39,6 +40,7 @@
     --same: #1b2440;
     --sel: #263461;
     --veil: rgba(0,0,0,.86);
+    --bad: #ff6b6b;
   }
 }
 * { box-sizing: border-box; }
@@ -88,6 +90,7 @@ header { display: flex; align-items: center; justify-content: space-between; hei
   position: relative; min-width: 0; min-height: 0; overflow: hidden;
 }
 .cell.given { color: var(--ink); }
+.cell.wrong { color: var(--bad); }
 .cell.peer { background: var(--peer); }
 .cell.same { background: var(--same); }
 .cell.sel { background: var(--sel); }
@@ -127,6 +130,7 @@ header { display: flex; align-items: center; justify-content: space-between; hei
 .sheet.open { opacity: 1; pointer-events: auto; }
 .sheet h2 { font-weight: 300; font-size: 34px; margin: 0 0 18px; }
 .sheet button { font-size: 20px; padding: 12px 40px; }
+.sheet #extra { color: var(--accent); margin-bottom: 8px; }
 .sheet .cancel { color: var(--muted); font-size: 16px; margin-top: 10px; }
 </style>
 </head>
@@ -159,16 +163,18 @@ header { display: flex; align-items: center; justify-content: space-between; hei
 
 <div class="sheet" id="sheet">
   <h2 id="sheetTitle">New game</h2>
+  <button id="extra">One more chance</button>
   <button data-level="easy">Easy</button>
   <button data-level="medium">Medium</button>
   <button data-level="hard">Hard</button>
+  <button data-level="impossible">Impossible</button>
   <button class="cancel" id="cancel">Cancel</button>
 </div>
 
 <script>
 const CN = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-const LEVELS = { easy: 40, medium: 32, hard: 26 };   // target number of clues
-const NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+const LEVELS = { easy: 40, medium: 32, hard: 26, impossible: 22 };   // target number of clues
+const NAMES = { easy: 'Easy', medium: 'Medium', hard: 'Hard', impossible: 'Impossible' };
 const KEY = 'sudoku-state-v1';
 const $ = id => document.getElementById(id);
 
@@ -254,6 +260,7 @@ function newGame(level) {
     level, cn: S ? S.cn : false,
     given: puz, sol, val: puz.slice(), notes: new Array(81).fill(0),
     hist: [], sel: -1, noting: false, solved: false,
+    mistakes: 0, max: 3, over: false,
   };
   save(); render();
 }
@@ -271,7 +278,7 @@ function commit(cells) {
 
 function input(d) {
   const i = S.sel;
-  if (i < 0 || S.given[i] || S.solved) return;
+  if (i < 0 || S.given[i] || S.solved || S.over) return;
   if (S.noting) {
     if (S.val[i]) return;
     commit([i]);
@@ -284,22 +291,23 @@ function input(d) {
     commit([i, ...touched]);
     S.val[i] = d; S.notes[i] = 0;
     for (const j of touched) S.notes[j] &= ~(1 << d);
+    if (d !== S.sol[i] && ++S.mistakes >= S.max) S.over = true;
   }
   if (S.val.every((v, k) => v === S.sol[k])) S.solved = true;
   save(); render();
-  if (S.solved) setTimeout(() => openSheet('Solved'), 450);
+  if (S.solved || S.over) setTimeout(openSheet, 450);
 }
 
 function erase() {
   const i = S.sel;
-  if (i < 0 || S.given[i] || S.solved || (!S.val[i] && !S.notes[i])) return;
+  if (i < 0 || S.given[i] || S.solved || S.over || (!S.val[i] && !S.notes[i])) return;
   commit([i]);
   S.val[i] = 0; S.notes[i] = 0;
   save(); render();
 }
 
 function undo() {
-  if (S.solved) return;
+  if (S.solved || S.over) return;
   const step = S.hist.pop();
   if (!step) return;
   for (const { i, v, n } of step) { S.val[i] = v; S.notes[i] = n; }
@@ -334,7 +342,7 @@ const cells = [];
 
 function render() {
   document.body.classList.toggle('cn', S.cn);
-  $('level').textContent = NAMES[S.level];
+  $('level').textContent = `${NAMES[S.level]} · ${S.mistakes}/${S.max}`;
   const [a, b] = $('script').children;
   a.classList.toggle('on', !S.cn); b.classList.toggle('on', S.cn);
   $('notes').classList.toggle('on', S.noting);
@@ -346,6 +354,7 @@ function render() {
     const el = cells[i], v = S.val[i];
     let cls = 'cell';
     if (S.given[i]) cls += ' given';
+    else if (v && v !== S.sol[i]) cls += ' wrong';
     if (sel >= 0) {
       if (i === sel) cls += ' sel';
       else if (sv && v === sv) cls += ' same';
@@ -361,21 +370,23 @@ function render() {
   }
 
   const counts = new Array(10).fill(0);
-  for (const v of S.val) counts[v]++;
+  S.val.forEach((v, i) => { if (v === S.sol[i]) counts[v]++; });
   [...$('pad').children].forEach((btn, k) => {
     btn.textContent = glyph(k + 1);
     btn.classList.toggle('done', counts[k + 1] >= 9);
   });
 }
 
-function openSheet(title) {
-  $('sheetTitle').textContent = title;
-  $('cancel').style.display = S.solved ? 'none' : '';
+function openSheet() {
+  $('sheetTitle').textContent = S.solved ? 'Solved' : S.over ? 'Game over' : 'New game';
+  $('cancel').style.display = S.solved || S.over ? 'none' : '';
+  $('extra').style.display = S.over && S.max === 3 ? '' : 'none';
   $('sheet').classList.add('open');
 }
 const closeSheet = () => $('sheet').classList.remove('open');
 
-$('new').addEventListener('click', () => openSheet(S.solved ? 'Solved' : 'New game'));
+$('new').addEventListener('click', openSheet);
+$('extra').addEventListener('click', () => { S.max++; S.over = false; save(); render(); closeSheet(); });
 $('cancel').addEventListener('click', closeSheet);
 $('sheet').querySelectorAll('[data-level]').forEach(btn =>
   btn.addEventListener('click', () => { closeSheet(); newGame(btn.dataset.level); }));
@@ -405,7 +416,7 @@ document.addEventListener('keydown', e => {
 });
 
 S = load();
-if (S && S.sol && S.val) { render(); if (S.solved) openSheet('Solved'); }
+if (S && S.sol && S.val) { S.mistakes ||= 0; S.max ||= 3; render(); if (S.solved || S.over) openSheet(); }
 else { S = null; newGame('easy'); }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
